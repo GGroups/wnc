@@ -1,0 +1,75 @@
+func recvFile(rawconn io.ReadWriteCloser) error {
+	var name string
+	var size int64
+	conn := textproto.NewConn(rawconn)
+	defer conn.Close()
+
+	line1, err := conn.ReadLine()
+	if err != nil {
+		return err
+	}
+	if strings.Compare(line1, "Action:Push") != 0 {
+		return fmt.Errorf("Error Header:%s", line1)
+	}
+
+	line1, err = conn.ReadLine()
+	if err != nil {
+		return err
+	}
+	if strings.Compare(line1, "Version:1") != 0 {
+		return fmt.Errorf("Error Header:%s", line1)
+	}
+
+	line1, err = conn.ReadLine()
+	if err != nil {
+		return err
+	}
+	if strings.HasPrefix(line1, "FileName:") {
+		name = strings.TrimPrefix(line1, "FileName:")
+		fmt.Fprintln(os.Stderr, name)
+	} else {
+		return fmt.Errorf("Error Header:%s", line1)
+	}
+
+	line1, err = conn.ReadLine()
+	if err != nil {
+		return err
+	}
+	if strings.HasPrefix(line1, "Size:") {
+		sz := strings.TrimPrefix(line1, "Size:")
+		size, err = strconv.ParseInt(sz, 10, 64)
+		if err != nil {
+			return fmt.Errorf("%w\nHeader:%s", err, line1)
+		}
+	} else {
+		return fmt.Errorf("Error Header:%s", line1)
+	}
+
+	line1, err = conn.ReadLine()
+	if err != nil {
+		return err
+	}
+	if strings.Compare(line1, "Data") != 0 {
+		return fmt.Errorf("Error Header:%s", line1)
+	}
+
+	fp, err := os.Create(name)
+	if err != nil {
+		return err
+	}
+	defer fp.Close()
+	for size > 0 {
+		var buf [512]byte
+		n, _ := conn.R.Read(buf[:])
+		if n == 0 {
+			break
+		}
+		size -= int64(n)
+		if size >= 0 {
+			fp.Write(buf[:n])
+		} else {
+			fp.Write(buf[:n+int(size)])
+		}
+	}
+	return nil
+}
